@@ -12,10 +12,13 @@ st.set_page_config(page_title="Movie Recommender", layout="wide")
 # Load Movie Data and Similarity Matrix (with error handling)
 def load_data():
     try:
-        movies_dict = pickle.load(open('movie_dict.pkl', 'rb'))
+        with open('movie_dict.pkl', 'rb') as f:
+            movies_dict = pickle.load(f)
         movies = pd.DataFrame(movies_dict)
-        similarity_path = os.path.abspath('similarity.pkl') # To get absolute path
-        similarity = pickle.load(open(similarity_path, 'rb'))
+        
+        with open('similarity.pkl', 'rb') as f:
+            similarity = pickle.load(f)
+        
         return movies, similarity
     except (FileNotFoundError, pickle.UnpicklingError) as e:
         st.error(f"Error loading data files: {e}")
@@ -28,7 +31,7 @@ async def fetch_poster(movie_title, session):
     try:
         async with session.get(url) as response:
             data = await response.json()
-            return data.get('Poster', "https://via.placeholder.com/300x450.png?text=Poster+Not+Found")
+            return data.get('Poster', None)
     except aiohttp.ClientError as e:
         st.error(f"Error fetching poster: {e}")
         return "https://via.placeholder.com/300x450.png?text=Poster+Not+Found"
@@ -46,11 +49,6 @@ async def fetch_imdb_url(movie_title, session):
     except aiohttp.ClientError as e:
         st.error(f"Error fetching IMDb URL: {e}")
         return None
-
-async def fetch_movie_data(movie_title, session):
-    poster = await fetch_poster(movie_title, session)
-    imdb_url = await fetch_imdb_url(movie_title, session)
-    return movie_title, poster, imdb_url
 
 # Movie Recommendation Logic
 @st.cache_data  
@@ -109,5 +107,3 @@ if movies is not None and similarity is not None:
                     st.text("Poster not found")  # Indicate missing poster
 else:
     st.error("Error: Unable to load movie data. Please check the data files.")
-
-
