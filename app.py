@@ -2,108 +2,161 @@ import streamlit as st
 import pandas as pd
 import pickle
 import requests
-import asyncio
-import aiohttp
-import os
+from concurrent.futures import ThreadPoolExecutor
 
-# Set Page Configuration
+# Set the page configuration
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 
-# Load Movie Data and Similarity Matrix (with error handling)
-def load_data():
-    try:
-        with open('movie_dict.pkl', 'rb') as f:
-            movies_dict = pickle.load(f)
-        movies = pd.DataFrame(movies_dict)
-        
-        with open('similarity.pkl', 'rb') as f:
-            similarity = pickle.load(f)
-        
-        return movies, similarity
-    except (FileNotFoundError, pickle.UnpicklingError) as e:
-        st.error(f"Error loading data files: {e}")
-        return None, None
 
-# Fetch Poster and IMDb URL Asynchronously
-async def fetch_poster(movie_title, session):
+@st.cache
+def fetch_poster(movie_title):
+    """Fetches poster image URL for a given movie title from OMDb."""
     api_key = '4ab1678b'
     url = f"http://www.omdbapi.com/?t={movie_title}&apikey={api_key}"
-    try:
-        async with session.get(url) as response:
-            data = await response.json()
-            return data.get('Poster', None)
-    except aiohttp.ClientError as e:
-        st.error(f"Error fetching poster: {e}")
-        return "https://via.placeholder.com/300x450.png?text=Poster+Not+Found"
+    response = requests.get(url)
 
-async def fetch_imdb_url(movie_title, session):
+    if response.status_code == 200:
+        data = response.json()
+        if 'Poster' in data and data['Poster'] != 'N/A':
+            return data['Poster']
+        else:
+            return None  # Return None if poster couldn't be fetched
+    else:
+        return None  # Return None if poster couldn't be fetched
+
+
+@st.cache
+def fetch_imdb_url(movie_title):
+    """Fetches IMDb URL for a given movie title from OMDb."""
     api_key = 'd68b7635'
     url = f"http://www.omdbapi.com/?t={movie_title}&apikey={api_key}"
-    try:
-        async with session.get(url) as response:
-            data = await response.json()
-            if 'imdbID' in data and data['imdbID'] != 'N/A':
-                return f"https://www.imdb.com/title/{data['imdbID']}/"
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        data = response.json()
+        if 'imdbID' in data and data['imdbID'] != 'N/A':
+            return f"https://www.imdb.com/title/{data['imdbID']}/"
+        else:
+            return None  # Return None if IMDb URL couldn't be fetched
+    else:
+        return None  # Return None if IMDb URL couldn't be fetched
+
+
+def recommend(movie):
+    """Recommends movies based on similarity to the input movie."""
+    movie_index = movies[movies['title'] == movie].index[0]
+    distances = similarity[movie_index]
+    movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]  # Top 5 similar movies
+
+    recommended_movies = []
+    recommended_movie_posters = []
+    recommended_movie_urls = []
+
+    with ThreadPoolExecutor() as executor:
+        results = list(executor.map(lambda i: fetch_movie_data(movies.iloc[i[0]].title), movies_list))
+
+    for result in results:
+        movie_title, poster, imdb_url = result
+        recommended_movies.append(movie_title)
+        recommended_movie_posters.append(poster)
+        recommended_movie_urls.append(imdb_url)
+
+    return recommended_movies, recommended_movie_posters, recommended_movie_urls
+
+
+def fetch_movie_data(movie_title):
+    """Fetches movie data (poster and IMDb URL) for a given movie title."""
+    poster = fetch_poster(movie_title)
+    imdb_url = fetch_imdb_url(movie_title)
+    return movie_title, poster, imdb_url
+
+
+# Load movie data and similarity matrix from pickle files
+movies_dict = pickle.load(open('movie_dict.pkl', 'rb'))
+movies = pd.DataFrame(movies_dict)
+similarity = pickle.load(open('similarity.pkl', 'rb'))
+
+
+# Add custom CSS for styling
+st.markdown("""
+    <style>
+        body {
+            background: url('https://cdn.nimbusthemes.com/2017/09/09233341/Free-Nature-Backgrounds-Seaport-During-Daytime-by-Pexels.jpeg') no-repeat center center fixed;
+            background-size: cover;
+            color: #FFFFFF;
+        }
+
+        .stApp {
+            background: rgba(0, 0, 0, 0.5);  /* Ensure background of app is semi-transparent */
+        }
+
+        .title {
+            font-size: 2.5em;
+            text-align: center;
+        }
+
+        .subtitle {
+            text-align: center;
+        }
+
+        .stButton>button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 4px 2px;
+            transition-duration: 0.4s;
+            cursor: pointer;
+        }
+
+        .stButton>button:hover {
+            background-color: white;
+            color: black;
+            border: 2px solid #4CAF50;
+        }
+
+        .stSelectbox>div {
+            background-color: rgba(0, 0, 0, 0.6);
+            border-radius: 5px;
+            padding: 10px;
+        }
+
+        .stImage {
+            border-radius: 10px;
+            margin-bottom: 10px;
+        }
+
+        .stMarkdown>p {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
+# Streamlit app layout
+st.markdown("<h1 class='title'>CINESPHERE</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='title'>🎥 Movie Recommender System 🎬</h1>", unsafe_allow_html=True)
+st.markdown("<h2 class='subtitle'>Find Your Next Favorite Movie</h2>", unsafe_allow_html=True)
+
+# Movie selection
+selected_movie_name = st.selectbox('Choose a movie:', movies['title'].values)
+
+# Recommend button and display
+if st.button('Recommend'):
+    names, posters, urls = recommend(selected_movie_name)
+    cols = st.columns(len(names))  # Create columns dynamically
+
+    for i, (name, poster, url) in enumerate(zip(names, posters, urls)):
+        with cols[i]:
+            st.markdown(f"<a href='{url}' target='_blank' style='color: white;'>{name}</a>", unsafe_allow_html=True)
+            if poster:
+                st.image(poster)
             else:
-                return None
-    except aiohttp.ClientError as e:
-        st.error(f"Error fetching IMDb URL: {e}")
-        return None
+                st.text("Poster not found")  # Indicate missing poster
 
-# Movie Recommendation Logic
-@st.cache_data  
-def recommend(movie, movies, similarity):
-    try:
-        movie_index = movies[movies['title'] == movie].index[0]
-        distances = similarity[movie_index]
-        movies_list = sorted(list(enumerate(distances)), reverse=True, key=lambda x: x[1])[1:6]
 
-        recommended_movies = []
-        recommended_movie_posters = []
-        recommended_movie_urls = []
-
-        async def get_movie_data_async(movie_list):
-            async with aiohttp.ClientSession() as session:
-                tasks = [asyncio.ensure_future(fetch_movie_data(movies.iloc[i[0]].title, session)) for i in movie_list]
-                return await asyncio.gather(*tasks)
-
-        results = asyncio.run(get_movie_data_async(movies_list))
-
-        for movie_title, poster, imdb_url in results:
-            recommended_movies.append(movie_title)
-            recommended_movie_posters.append(poster)
-            recommended_movie_urls.append(imdb_url)
-
-        return recommended_movies, recommended_movie_posters, recommended_movie_urls
-    except (KeyError, IndexError) as e:
-        st.error(f"Error finding movie or calculating recommendations: {e}")
-        return [], [], []
-
-# Main App Logic
-movies, similarity = load_data() 
-
-if movies is not None and similarity is not None:
-    # Add your CSS Styling here (unchanged)
-
-    # Streamlit app layout
-    st.markdown("<h1 class='title'>CINESPHERE</h1>", unsafe_allow_html=True)
-    st.markdown("<h1 class='title'>🎥 Movie Recommender System 🎬</h1>", unsafe_allow_html=True)
-    st.markdown("<h2 class='subtitle'>Find Your Next Favorite Movie</h2>", unsafe_allow_html=True)
-
-    # Movie selection
-    selected_movie_name = st.selectbox('Choose a movie:', movies['title'].values)
-
-    # Recommend button and display
-    if st.button('Recommend'):
-        names, posters, urls = recommend(selected_movie_name, movies, similarity)
-        cols = st.columns(len(names))  # Create columns dynamically
-
-        for i, (name, poster, url) in enumerate(zip(names, posters, urls)):
-            with cols[i]:
-                st.markdown(f"<a href='{url}' target='_blank' style='color: white;'>{name}</a>", unsafe_allow_html=True)
-                if poster:
-                    st.image(poster)
-                else:
-                    st.text("Poster not found")  # Indicate missing poster
-else:
-    st.error("Error: Unable to load movie data. Please check the data files.")
