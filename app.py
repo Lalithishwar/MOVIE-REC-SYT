@@ -1,13 +1,11 @@
 import streamlit as st
 import pandas as pd
-import pickle
+import h5py
 import requests
 from concurrent.futures import ThreadPoolExecutor
 
 # Set the page configuration
 st.set_page_config(page_title="Movie Recommender", layout="wide")
-
-
 
 def fetch_poster(movie_title):
     """Fetches poster image URL for a given movie title from OMDb."""
@@ -24,8 +22,6 @@ def fetch_poster(movie_title):
     else:
         return None  # Return None if poster couldn't be fetched
 
-
-
 def fetch_imdb_url(movie_title):
     """Fetches IMDb URL for a given movie title from OMDb."""
     api_key = 'd68b7635'
@@ -40,7 +36,6 @@ def fetch_imdb_url(movie_title):
             return None  # Return None if IMDb URL couldn't be fetched
     else:
         return None  # Return None if IMDb URL couldn't be fetched
-
 
 def recommend(movie):
     """Recommends movies based on similarity to the input movie."""
@@ -63,19 +58,16 @@ def recommend(movie):
 
     return recommended_movies, recommended_movie_posters, recommended_movie_urls
 
-
 def fetch_movie_data(movie_title):
     """Fetches movie data (poster and IMDb URL) for a given movie title."""
     poster = fetch_poster(movie_title)
     imdb_url = fetch_imdb_url(movie_title)
     return movie_title, poster, imdb_url
 
-
-# Load movie data and similarity matrix from pickle files
-movies_dict = pickle.load(open('movie_dict.pkl', 'rb'))
-movies = pd.DataFrame(movies_dict)
-similarity = pickle.load(open('similarity.pkl', 'rb'))
-
+# Load movie data and similarity matrix from HDF5 files
+movies = pd.read_hdf('movies.h5', key='movies')
+with h5py.File('similarity.h5', 'r') as hf:
+    similarity = hf['similarity'][:]
 
 # Add custom CSS for styling
 st.markdown("""
@@ -158,5 +150,3 @@ if st.button('Recommend'):
                 st.image(poster)
             else:
                 st.text("Poster not found")  # Indicate missing poster
-
-
