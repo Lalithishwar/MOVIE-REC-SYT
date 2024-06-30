@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 st.set_page_config(page_title="Movie Recommender", layout="wide")
 
 
-@st.cache
+
 def fetch_poster(movie_title):
     """Fetches poster image URL for a given movie title from OMDb."""
     api_key = '4ab1678b'
@@ -25,7 +25,7 @@ def fetch_poster(movie_title):
         return None  # Return None if poster couldn't be fetched
 
 
-@st.cache
+
 def fetch_imdb_url(movie_title):
     """Fetches IMDb URL for a given movie title from OMDb."""
     api_key = 'd68b7635'
